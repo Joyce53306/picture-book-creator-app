@@ -18,6 +18,11 @@
   .page-card .value { font-size: 14px; }
   #error { color: #c0392b; margin-top: 16px; white-space: pre-wrap; }
   #loading { margin-top: 16px; color: #555; }
+  .hidden { display: none; }
+  .hint { font-size: 12px; color: #888; margin-top: 4px; }
+  #reviewUnitsBox { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  #reviewUnitsBox label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #444; margin: 0; background: #f2f2f2; padding: 4px 8px; border-radius: 6px; width: auto; }
+  #reviewUnitsBox input { width: auto; margin: 0; }
 </style>
 </head>
 <body>
@@ -40,8 +45,52 @@
   <option value="long_vowel">長母音拼讀</option>
 </select>
 
-<label>主題</label>
-<input id="topic" type="text" placeholder="例：公園野餐、動物朋友" value="公園野餐" />
+<!-- 主題故事用 -->
+<div id="field-topic">
+  <label>主題</label>
+  <input id="topic" type="text" placeholder="例：公園野餐、動物朋友" value="公園野餐" />
+</div>
+
+<!-- Sight Words 用：選單元 -->
+<div id="field-unit" class="hidden">
+  <label>課程單元（本月新字，鎖定）</label>
+  <select id="unit"></select>
+  <div class="hint" id="unit-words"></div>
+
+  <label>複習前面單元（可選，複選）</label>
+  <div id="reviewUnitsBox"></div>
+</div>
+
+<!-- CVC 用：選短母音規則 -->
+<div id="field-cvcRule" class="hidden">
+  <label>拼讀規則（短母音）</label>
+  <select id="cvcRule">
+    <option value="short_a">短母音 a</option>
+    <option value="short_e">短母音 e</option>
+    <option value="short_i">短母音 i</option>
+    <option value="short_o">短母音 o</option>
+    <option value="short_u">短母音 u</option>
+  </select>
+</div>
+
+<!-- 長母音用：選規則 -->
+<div id="field-longVowelRule" class="hidden">
+  <label>拼讀規則（長母音）</label>
+  <select id="longVowelRule">
+    <option value="long_a">長母音 A（a_e / ai / ay）</option>
+    <option value="long_e">長母音 E（e_e / ea / ee）</option>
+    <option value="long_i">長母音 I（i_e / ie / igh）</option>
+    <option value="long_o">長母音 O（o_e / oa / oe）</option>
+    <option value="long_u_ju">長母音 U-[ju]（u_e）</option>
+    <option value="long_u_u">長母音 U-[u]（ui / ue / oo）</option>
+  </select>
+</div>
+
+<!-- CVC / 長母音用：主題物件類別（可選） -->
+<div id="field-objectTopic" class="hidden">
+  <label>主題物件類別（可選）</label>
+  <input id="objectTopic" type="text" placeholder="例：野餐用品、動物" />
+</div>
 
 <label>故事跨頁數</label>
 <input id="storySpreads" type="number" min="2" max="8" value="4" />
@@ -55,12 +104,109 @@
 <script>
   const WORKER_URL = "https://picture-book-creator.joyce53306.workers.dev";
 
-  // 每頁句數依年段鎖定，不開放使用者自由選
-  const SENTENCES_PER_PAGE = {
-    entry: 1,
-    level1: 2,
-    level2: 2,
+  const SENTENCES_PER_PAGE = { entry: 1, level1: 2, level2: 2 };
+
+  const WORD_UNITS = {
+    ML: {
+      ML1: ["I", "a", "It/it", "made"], ML2: ["on", "to", "Not/not", "picnic"],
+      ML3: ["In/in", "the", "see", "that"], ML4: ["How/how", "are", "you", "Here/here"],
+      ML5: ["Go/go", "by", "Will/will", "can"], ML6: ["was", "like", "so", "Say/says"],
+      ML7: ["have", "Go/goes", "get", "where"], ML8: ["at", "who", "we", "and"],
+      ML9: ["Is/is", "like", "play", "with"], ML10: ["on", "in", "is", "big"]
+    },
+    BL: {
+      BL1: ["would", "I", "Be/be", "No"], BL2: ["got", "Try/tried", "can't", "ball"],
+      BL3: ["one", "with", "which", "better"], BL4: ["May/may", "have", "first", "please"],
+      BL5: ["What", "today", "need", "Does/does"], BL6: ["a", "Look/look", "see", "while"],
+      BL7: ["David", "Did/did", "draw", "his"], BL8: ["will", "not", "know", "That's"],
+      BL9: ["for", "me", "put", "Where/where"], BL10: ["If/if", "grow", "make", "would"]
+    }
   };
+
+  const modeSelect = document.getElementById("mode");
+  const levelSelect = document.getElementById("level");
+  const unitSelect = document.getElementById("unit");
+  const unitWordsHint = document.getElementById("unit-words");
+  const reviewUnitsBox = document.getElementById("reviewUnitsBox");
+
+  const fieldGroups = {
+    topic: document.getElementById("field-topic"),
+    unit: document.getElementById("field-unit"),
+    cvcRule: document.getElementById("field-cvcRule"),
+    longVowelRule: document.getElementById("field-longVowelRule"),
+    objectTopic: document.getElementById("field-objectTopic"),
+  };
+
+  function getWordSource() {
+    // 入門版用 ML，進階版用 BL
+    return modeSelect.value === "sight_words_entry" ? "ML" : "BL";
+  }
+
+  function populateUnitOptions() {
+    const source = getWordSource();
+    const units = WORD_UNITS[source];
+    unitSelect.innerHTML = "";
+    Object.keys(units).forEach((key) => {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = key;
+      unitSelect.appendChild(opt);
+    });
+    updateUnitWordsHint();
+    populateReviewUnitCheckboxes();
+  }
+
+  function populateReviewUnitCheckboxes() {
+    const source = getWordSource();
+    const units = WORD_UNITS[source];
+    const currentUnit = unitSelect.value;
+    reviewUnitsBox.innerHTML = "";
+    Object.keys(units).forEach((key) => {
+      if (key === currentUnit) return;
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = key;
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(key));
+      reviewUnitsBox.appendChild(label);
+    });
+  }
+
+  function getSelectedReviewUnits() {
+    return Array.from(reviewUnitsBox.querySelectorAll("input:checked")).map((el) => el.value);
+  }
+
+  function updateUnitWordsHint() {
+    const source = getWordSource();
+    const words = WORD_UNITS[source][unitSelect.value] || [];
+    unitWordsHint.textContent = "本單元字彙：" + words.join(", ");
+  }
+
+  function updateVisibleFields() {
+    const mode = modeSelect.value;
+    Object.values(fieldGroups).forEach((el) => el.classList.add("hidden"));
+
+    if (mode === "topic") {
+      fieldGroups.topic.classList.remove("hidden");
+    } else if (mode === "sight_words_advanced" || mode === "sight_words_entry") {
+      fieldGroups.unit.classList.remove("hidden");
+      populateUnitOptions();
+    } else if (mode === "cvc") {
+      fieldGroups.cvcRule.classList.remove("hidden");
+      fieldGroups.objectTopic.classList.remove("hidden");
+    } else if (mode === "long_vowel") {
+      fieldGroups.longVowelRule.classList.remove("hidden");
+      fieldGroups.objectTopic.classList.remove("hidden");
+    }
+  }
+
+  modeSelect.addEventListener("change", updateVisibleFields);
+  unitSelect.addEventListener("change", () => {
+    updateUnitWordsHint();
+    populateReviewUnitCheckboxes();
+  });
+  updateVisibleFields();
 
   const btn = document.getElementById("generateBtn");
   const loadingEl = document.getElementById("loading");
@@ -68,11 +214,29 @@
   const resultEl = document.getElementById("result");
 
   btn.addEventListener("click", async () => {
-    const level = document.getElementById("level").value;
-    const mode = document.getElementById("mode").value;
-    const topic = document.getElementById("topic").value;
+    const level = levelSelect.value;
+    const mode = modeSelect.value;
     const storySpreads = document.getElementById("storySpreads").value;
     const sentencesPerPage = SENTENCES_PER_PAGE[level];
+
+    const payload = { mode, level, sentencesPerPage, storySpreads };
+
+    if (mode === "topic") {
+      payload.topic = document.getElementById("topic").value;
+    } else if (mode === "sight_words_advanced" || mode === "sight_words_entry") {
+      const source = getWordSource();
+      const reviewUnits = getSelectedReviewUnits();
+      payload.unit = unitSelect.value;
+      payload.targetWords = WORD_UNITS[source][unitSelect.value];
+      payload.reviewUnits = reviewUnits;
+      payload.reviewWords = reviewUnits.flatMap((u) => WORD_UNITS[source][u]);
+    } else if (mode === "cvc") {
+      payload.vowelRule = document.getElementById("cvcRule").value;
+      payload.objectTopic = document.getElementById("objectTopic").value;
+    } else if (mode === "long_vowel") {
+      payload.vowelRule = document.getElementById("longVowelRule").value;
+      payload.objectTopic = document.getElementById("objectTopic").value;
+    }
 
     errorEl.style.display = "none";
     resultEl.innerHTML = "";
@@ -83,7 +247,7 @@
       const res = await fetch(WORKER_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, mode, level, sentencesPerPage, storySpreads }),
+        body: JSON.stringify(payload),
       });
 
       const text = await res.text();
