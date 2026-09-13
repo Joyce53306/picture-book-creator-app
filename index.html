@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!--
+  Joyce ABC Adventure
+  版權所有 © Joyce (Michelle) — 未經授權請勿複製、轉載或商業使用
+-->
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
@@ -25,6 +29,17 @@
   #reviewUnitsBox { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   #reviewUnitsBox label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #444; margin: 0; background: #f2f2f2; padding: 4px 8px; border-radius: 6px; width: auto; }
   #reviewUnitsBox input { width: auto; margin: 0; }
+
+  .book-page { border: 1px solid #ddd; border-radius: 10px; padding: 24px 20px; margin-bottom: 16px; text-align: center; background: #fafafa; }
+  .book-page.cover { background: #fff; }
+  .book-page img.cover-img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
+  .book-page .book-title { font-size: 22px; font-weight: bold; margin: 8px 0; }
+  .book-page .flyleaf-line { font-size: 14px; color: #555; margin: 4px 0; }
+  .brand-mark { font-size: 11px; color: #999; letter-spacing: 0.5px; margin-top: 16px; }
+  .book-page.cover .brand-mark { position: relative; }
+  .word-list-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+  .word-list-grid span { background: #eef2ff; color: #2563eb; padding: 6px 12px; border-radius: 16px; font-size: 14px; }
+  .book-page.back-cover .book-title { font-size: 18px; }
 </style>
 </head>
 <body>
@@ -105,6 +120,9 @@
   <label>自訂畫風描述（英文效果較好，例如：doodle line art, crayon texture）</label>
   <input id="customStyle" type="text" placeholder="請輸入畫風描述" />
 </div>
+
+<label>使用班級／對象（可選，會顯示在扉頁）</label>
+<input id="className" type="text" placeholder="例：大獅子班" />
 
 <label>故事跨頁數</label>
 <input id="storySpreads" type="number" min="2" max="8" value="4" />
@@ -260,6 +278,7 @@
     const sentencesPerPage = SENTENCES_PER_PAGE[level];
 
     const artStyle = getStyleDescription();
+    const className = document.getElementById("className").value.trim();
     const payload = { mode, level, sentencesPerPage, storySpreads, artStyle };
 
     if (mode === "topic") {
@@ -299,8 +318,15 @@
       }
 
       const data = JSON.parse(text);
+
+      renderCoverAndFlyleaf(data, className, artStyle);
       renderStory(data);
-      loadingEl.textContent = "文字完成，開始生成插圖（每頁約10-30秒，請耐心等待）...";
+      renderWordListAndBackCover(data, payload);
+
+      loadingEl.textContent = "生成封面插圖中...";
+      await generateCoverImage(data, artStyle);
+
+      loadingEl.textContent = "文字完成，開始生成內頁插圖（每頁約10-30秒，請耐心等待）...";
       await generateAllImages(data, artStyle);
       loadingEl.style.display = "none";
     } catch (err) {
@@ -313,7 +339,7 @@
   });
 
   function renderStory(data) {
-    let html = `<h2>${escapeHtml(data.title || "（無標題）")}</h2>`;
+    let html = `<h2>內頁</h2>`;
     (data.pages || []).forEach((page) => {
       html += `
         <div class="page-card" id="page-card-${page.page_number}">
@@ -329,7 +355,97 @@
         </div>
       `;
     });
-    resultEl.innerHTML = html;
+    resultEl.insertAdjacentHTML("beforeend", html);
+  }
+
+  // 封面 + 扉頁
+  function renderCoverAndFlyleaf(data, className, artStyleKeyLabel) {
+    const title = escapeHtml(data.title || "（無標題）");
+    const classLine = className ? `<div class="flyleaf-line">為 ${escapeHtml(className)} 製作</div>` : "";
+
+    const html = `
+      <div class="book-page cover" id="cover-page">
+        <div class="book-title">${title}</div>
+        <div id="cover-img-slot"></div>
+        <div class="img-status" id="cover-img-status">封面插圖生成中...</div>
+        <div class="brand-mark">Joyce ABC Adventure</div>
+      </div>
+      <div class="book-page">
+        <div class="book-title" style="font-size:18px;">${title}</div>
+        ${classLine}
+        <div class="flyleaf-line">AI 協力繪本 · Joyce ABC Adventure</div>
+        <div class="flyleaf-line" style="font-size:12px;color:#999;">${new Date().toLocaleDateString("zh-TW")}</div>
+      </div>
+    `;
+    resultEl.insertAdjacentHTML("beforeend", html);
+  }
+
+  async function generateCoverImage(data, artStyle) {
+    const statusEl = document.getElementById("cover-img-status");
+    const slotEl = document.getElementById("cover-img-slot");
+    const coverPrompt = `Children's picture book front cover illustration for a story titled "${data.title || ""}", ${artStyle}, no text or letters in the image, warm inviting composition, portrait orientation`;
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generateImage", prompt: coverPrompt }),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = `封面插圖生成失敗：${text}`;
+        return;
+      }
+      const imgData = JSON.parse(text);
+      if (imgData.imageBase64 && slotEl) {
+        const img = document.createElement("img");
+        img.className = "cover-img";
+        img.src = `data:${imgData.mimeType};base64,${imgData.imageBase64}`;
+        slotEl.appendChild(img);
+        if (statusEl) statusEl.textContent = "";
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = `封面插圖發生錯誤：${e.message}`;
+    }
+  }
+
+  // 單字表（純前端從內文抽取，不需要額外呼叫 Worker）
+  const STOP_WORDS = new Set(["a","an","the","is","it","in","on","to","and","was","are","of","that","this","with","for","at","by","so"]);
+
+  function extractVocabulary(data, payload) {
+    // Sight words 模式：直接用選定的目標字＋複習字，不用猜
+    if (payload.targetWords) {
+      return [...new Set([...(payload.targetWords || []), ...(payload.reviewWords || [])])]
+        .map((w) => w.split("/")[0]);
+    }
+    // 其他模式：從每頁文字抽取實詞
+    const words = new Set();
+    (data.pages || []).forEach((page) => {
+      (page.text || "").split(/[^A-Za-z']+/).forEach((w) => {
+        const lw = w.toLowerCase();
+        if (lw.length > 1 && !STOP_WORDS.has(lw)) {
+          words.add(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+        }
+      });
+    });
+    return [...words].slice(0, 14);
+  }
+
+  function renderWordListAndBackCover(data, payload) {
+    const vocab = extractVocabulary(data, payload || {});
+    const vocabHtml = vocab.map((w) => `<span>${escapeHtml(w)}</span>`).join("");
+
+    const html = `
+      <div class="book-page">
+        <div class="book-title" style="font-size:18px;">單字表 Word List</div>
+        <div class="word-list-grid">${vocabHtml || "<span>（無）</span>"}</div>
+      </div>
+      <div class="book-page back-cover">
+        <div class="book-title">The End</div>
+        <div class="brand-mark" style="font-size:14px;margin-top:24px;">Joyce ABC Adventure</div>
+      </div>
+    `;
+    resultEl.insertAdjacentHTML("beforeend", html);
   }
 
   // 依序（一張一張）呼叫 Worker 生成每頁插圖，並即時把圖片插進畫面
