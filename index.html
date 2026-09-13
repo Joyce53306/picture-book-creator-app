@@ -8,8 +8,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>繪本生成器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  body { font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+  body { font-family: 'Andika', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1 { font-size: 20px; }
   label { display: block; font-size: 13px; color: #555; margin-top: 16px; margin-bottom: 4px; }
   select, input, textarea { width: 100%; padding: 8px; font-size: 14px; box-sizing: border-box; }
@@ -34,12 +37,35 @@
   .book-page.cover { background: #fff; }
   .book-page img.cover-img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
   .book-page .book-title { font-size: 22px; font-weight: bold; margin: 8px 0; }
+  .book-page.cover .book-title { font-size: 34px; }
   .book-page .flyleaf-line { font-size: 14px; color: #555; margin: 4px 0; }
   .brand-mark { font-size: 11px; color: #999; letter-spacing: 0.5px; margin-top: 16px; }
   .book-page.cover .brand-mark { position: relative; }
   .word-list-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
   .word-list-grid span { background: #eef2ff; color: #2563eb; padding: 6px 12px; border-radius: 16px; font-size: 14px; }
   .book-page.back-cover .book-title { font-size: 18px; }
+  .icon-slot { display: inline-block; vertical-align: middle; margin: 0 2px; }
+  .icon-slot img { height: 32px; vertical-align: middle; border-radius: 4px; }
+  .icon-loading { font-size: 12px; color: #999; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
+  #printBtn { display: none; background: #16a34a; }
+  #fontSizeBar { display: none; align-items: center; gap: 10px; margin-top: 12px; padding: 10px; background: #f5f5f5; border-radius: 8px; }
+  #fontSizeBar span { font-size: 13px; color: #555; }
+  #fontSizeBar button { margin: 0; padding: 4px 12px; font-size: 16px; background: #eee; color: #333; border: 1px solid #ccc; }
+  .page-card .value { font-size: var(--story-font-size, 14px); }
+  #toc-page ul { text-align: left; list-style: none; padding: 0; margin-top: 12px; }
+  #toc-page li { padding: 6px 0; border-bottom: 1px dashed #ddd; font-size: 14px; }
+
+  .editable-hint { font-size: 11px; color: #16a34a; margin-top: 10px; }
+  [contenteditable="true"] { outline: none; }
+  [contenteditable="true"]:focus { background: #fffbe6; box-shadow: 0 0 0 2px #fde68a; border-radius: 4px; }
+  @media print {
+    .editable-hint { display: none !important; }
+    #fontSizeBar { display: none !important; }
+    label, select, input, #generateBtn, #loading, h1, .hint { display: none !important; }
+    #printBtn { display: none !important; }
+    .book-page, .page-card { page-break-after: always; border: none; background: #fff; }
+    body { max-width: 100%; margin: 0; padding: 0; }
+  }
 </style>
 </head>
 <body>
@@ -124,10 +150,21 @@
 <label>使用班級／對象（可選，會顯示在扉頁）</label>
 <input id="className" type="text" placeholder="例：大獅子班" />
 
+<label style="display:flex; align-items:center; gap:6px;">
+  <input id="includeToc" type="checkbox" style="width:auto;" /> 加入目錄頁
+</label>
+
 <label>故事跨頁數</label>
 <input id="storySpreads" type="number" min="2" max="8" value="4" />
 
 <button id="generateBtn">生成故事</button>
+<button id="printBtn">🖨️ 列印 / 存成 PDF</button>
+<div id="fontSizeBar">
+  <span>內頁文字大小：</span>
+  <button id="fontDecrease" type="button">A-</button>
+  <span id="fontSizeLabel">14px</span>
+  <button id="fontIncrease" type="button">A+</button>
+</div>
 
 <div id="loading" style="display:none;">生成中，請稍候...</div>
 <div id="error" style="display:none;"></div>
@@ -318,8 +355,10 @@
       }
 
       const data = JSON.parse(text);
+      const includeToc = document.getElementById("includeToc").checked;
 
       renderCoverAndFlyleaf(data, className, artStyle);
+      if (includeToc) renderToc(data, mode, payload);
       renderStory(data);
       renderWordListAndBackCover(data, payload);
 
@@ -328,7 +367,15 @@
 
       loadingEl.textContent = "文字完成，開始生成內頁插圖（每頁約10-30秒，請耐心等待）...";
       await generateAllImages(data, artStyle);
+
+      if (mode === "sight_words_entry") {
+        loadingEl.textContent = "生成圖示中（取代不識字用的文字標記）...";
+        await generateIconsForEntryMode(data, artStyle);
+      }
+
       loadingEl.style.display = "none";
+      printBtn.style.display = "inline-block";
+      fontSizeBar.style.display = "flex";
     } catch (err) {
       errorEl.style.display = "block";
       errorEl.textContent = "發生錯誤：\n" + err.message;
@@ -338,6 +385,97 @@
     }
   });
 
+  const printBtn = document.getElementById("printBtn");
+  printBtn.addEventListener("click", () => window.print());
+
+  const fontSizeBar = document.getElementById("fontSizeBar");
+  const fontSizeLabel = document.getElementById("fontSizeLabel");
+  let currentFontSize = 14;
+
+  function applyFontSize() {
+    document.documentElement.style.setProperty("--story-font-size", currentFontSize + "px");
+    fontSizeLabel.textContent = currentFontSize + "px";
+  }
+
+  document.getElementById("fontIncrease").addEventListener("click", () => {
+    if (currentFontSize < 28) currentFontSize += 2;
+    applyFontSize();
+  });
+  document.getElementById("fontDecrease").addEventListener("click", () => {
+    if (currentFontSize > 10) currentFontSize -= 2;
+    applyFontSize();
+  });
+
+  function renderToc(data, mode, payload) {
+    const vocabModes = ["sight_words_entry", "sight_words_advanced", "cvc", "long_vowel"];
+
+    if (vocabModes.includes(mode)) {
+      const vocab = extractVocabulary(data, payload || {});
+      const vocabHtml = vocab.map((w) => `<span>${escapeHtml(w)}</span>`).join("");
+      const html = `
+        <div class="book-page" id="toc-page">
+          <div class="book-title" style="font-size:18px;">生字表</div>
+          <div class="word-list-grid" contenteditable="true">${vocabHtml || "<span>（無）</span>"}</div>
+          <div class="editable-hint">👆 點這裡可以直接編輯／增刪文字</div>
+        </div>
+      `;
+      resultEl.insertAdjacentHTML("beforeend", html);
+      return;
+    }
+
+    const items = ["封面", "扉頁"];
+    (data.pages || []).forEach((p) => items.push(`故事內頁 - 第 ${p.page_number} 頁`));
+    items.push("單字表", "封底");
+    const html = `
+      <div class="book-page" id="toc-page">
+        <div class="book-title" style="font-size:18px;">目錄</div>
+        <ul contenteditable="true">${items.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+        <div class="editable-hint">👆 點這裡可以直接編輯、刪除或增加項目</div>
+      </div>
+    `;
+    resultEl.insertAdjacentHTML("beforeend", html);
+  }
+
+  // 把句子裡的 (icon: xxx) 標記換成真的小圖示，方便不識字的孩子閱讀
+  function renderTextWithIconSlots(text) {
+    return escapeHtml(text || "").replace(/\(icon:\s*([^)]+)\)/gi, (match, iconName) => {
+      const safeName = iconName.trim();
+      const idSafe = safeName.replace(/[^a-zA-Z0-9]/g, "_");
+      return `<span class="icon-slot" data-icon-name="${escapeHtml(safeName)}" id="icon-${idSafe}"><span class="icon-loading">(${escapeHtml(safeName)})</span></span>`;
+    });
+  }
+
+  async function generateIconsForEntryMode(data, artStyle) {
+    const iconNames = new Set();
+    (data.pages || []).forEach((page) => {
+      const matches = (page.text || "").matchAll(/\(icon:\s*([^)]+)\)/gi);
+      for (const m of matches) iconNames.add(m[1].trim());
+    });
+
+    for (const name of iconNames) {
+      const idSafe = name.replace(/[^a-zA-Z0-9]/g, "_");
+      const prompt = `Simple flat icon illustration of "${name}", single object centered, plain white background, colorful, flashcard style for young children, no text`;
+      try {
+        const res = await fetch(WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "generateImage", prompt }),
+        });
+        const text = await res.text();
+        if (!res.ok) continue;
+        const imgData = JSON.parse(text);
+        if (imgData.imageBase64) {
+          const src = `data:${imgData.mimeType};base64,${imgData.imageBase64}`;
+          document.querySelectorAll(`[data-icon-name="${CSS.escape(name)}"]`).forEach((slot) => {
+            slot.innerHTML = `<img src="${src}" alt="${escapeHtml(name)}" />`;
+          });
+        }
+      } catch (e) {
+        // 單一圖示失敗不影響其他圖示，維持原本文字標記
+      }
+    }
+  }
+
   function renderStory(data) {
     let html = `<h2>內頁</h2>`;
     (data.pages || []).forEach((page) => {
@@ -345,7 +483,7 @@
         <div class="page-card" id="page-card-${page.page_number}">
           <h3>第 ${page.page_number} 頁</h3>
           <div class="label">句子</div>
-          <div class="value">${escapeHtml(page.text || "")}</div>
+          <div class="value">${renderTextWithIconSlots(page.text)}</div>
           <div class="label">朗讀腳本</div>
           <div class="value">${escapeHtml(page.narration_script || "")}</div>
           <div class="label">插圖提示詞</div>
