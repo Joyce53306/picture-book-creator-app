@@ -16,6 +16,8 @@
   .page-card h3 { margin: 0 0 8px; font-size: 14px; color: #2563eb; }
   .page-card .label { font-size: 12px; color: #888; margin-top: 8px; }
   .page-card .value { font-size: 14px; }
+  .page-card img { max-width: 100%; border-radius: 6px; margin-top: 8px; display: block; }
+  .img-status { font-size: 12px; color: #999; margin-top: 8px; }
   #error { color: #c0392b; margin-top: 16px; white-space: pre-wrap; }
   #loading { margin-top: 16px; color: #555; }
   .hidden { display: none; }
@@ -241,6 +243,7 @@
     errorEl.style.display = "none";
     resultEl.innerHTML = "";
     loadingEl.style.display = "block";
+    loadingEl.textContent = "生成故事文字中，請稍候...";
     btn.disabled = true;
 
     try {
@@ -258,11 +261,14 @@
 
       const data = JSON.parse(text);
       renderStory(data);
+      loadingEl.textContent = "文字完成，開始生成插圖（每頁約10-30秒，請耐心等待）...";
+      await generateAllImages(data);
+      loadingEl.style.display = "none";
     } catch (err) {
       errorEl.style.display = "block";
       errorEl.textContent = "發生錯誤：\n" + err.message;
-    } finally {
       loadingEl.style.display = "none";
+    } finally {
       btn.disabled = false;
     }
   });
@@ -271,7 +277,7 @@
     let html = `<h2>${escapeHtml(data.title || "（無標題）")}</h2>`;
     (data.pages || []).forEach((page) => {
       html += `
-        <div class="page-card">
+        <div class="page-card" id="page-card-${page.page_number}">
           <h3>第 ${page.page_number} 頁</h3>
           <div class="label">句子</div>
           <div class="value">${escapeHtml(page.text || "")}</div>
@@ -279,10 +285,48 @@
           <div class="value">${escapeHtml(page.narration_script || "")}</div>
           <div class="label">插圖提示詞</div>
           <div class="value">${escapeHtml(page.image_prompt || "")}</div>
+          <div class="img-status" id="img-status-${page.page_number}">插圖等待生成中...</div>
+          <div id="img-slot-${page.page_number}"></div>
         </div>
       `;
     });
     resultEl.innerHTML = html;
+  }
+
+  // 依序（一張一張）呼叫 Worker 生成每頁插圖，並即時把圖片插進畫面
+  async function generateAllImages(data) {
+    const pages = data.pages || [];
+    for (const page of pages) {
+      const statusEl = document.getElementById(`img-status-${page.page_number}`);
+      const slotEl = document.getElementById(`img-slot-${page.page_number}`);
+      if (statusEl) statusEl.textContent = `第 ${page.page_number} 頁插圖生成中...`;
+
+      try {
+        const res = await fetch(WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "generateImage", prompt: page.image_prompt }),
+        });
+        const text = await res.text();
+
+        if (!res.ok) {
+          if (statusEl) statusEl.textContent = `第 ${page.page_number} 頁插圖生成失敗：${text}`;
+          continue;
+        }
+
+        const imgData = JSON.parse(text);
+        if (imgData.imageBase64 && slotEl) {
+          const img = document.createElement("img");
+          img.src = `data:${imgData.mimeType};base64,${imgData.imageBase64}`;
+          slotEl.appendChild(img);
+          if (statusEl) statusEl.textContent = "插圖完成 ✓";
+        } else if (statusEl) {
+          statusEl.textContent = `第 ${page.page_number} 頁插圖回應格式異常`;
+        }
+      } catch (e) {
+        if (statusEl) statusEl.textContent = `第 ${page.page_number} 頁插圖發生錯誤：${e.message}`;
+      }
+    }
   }
 
   function escapeHtml(str) {
