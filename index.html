@@ -94,6 +94,18 @@
   <input id="objectTopic" type="text" placeholder="例：野餐用品、動物" />
 </div>
 
+<label>插圖畫風</label>
+<select id="artStyle">
+  <option value="collage" selected>拼貼風（collage，撕紙拼貼質感）</option>
+  <option value="clay">Clay 黏土風（立體黏土人偶質感）</option>
+  <option value="watercolor">童趣水彩（柔和水彩暈染）</option>
+  <option value="other">其他（自訂）</option>
+</select>
+<div id="field-customStyle" class="hidden">
+  <label>自訂畫風描述（英文效果較好，例如：doodle line art, crayon texture）</label>
+  <input id="customStyle" type="text" placeholder="請輸入畫風描述" />
+</div>
+
 <label>故事跨頁數</label>
 <input id="storySpreads" type="number" min="2" max="8" value="4" />
 
@@ -138,6 +150,32 @@
     longVowelRule: document.getElementById("field-longVowelRule"),
     objectTopic: document.getElementById("field-objectTopic"),
   };
+
+  const artStyleSelect = document.getElementById("artStyle");
+  const customStyleField = document.getElementById("field-customStyle");
+
+  const STYLE_DESCRIPTIONS = {
+    collage: "torn paper collage style, textured cut-paper shapes, children's picture book illustration",
+    clay: "claymation style, 3D clay figures, soft studio lighting, children's picture book illustration",
+    watercolor: "soft watercolor illustration, gentle color bleeding, children's picture book illustration",
+  };
+
+  function updateStyleFieldVisibility() {
+    if (artStyleSelect.value === "other") {
+      customStyleField.classList.remove("hidden");
+    } else {
+      customStyleField.classList.add("hidden");
+    }
+  }
+  artStyleSelect.addEventListener("change", updateStyleFieldVisibility);
+  updateStyleFieldVisibility();
+
+  function getStyleDescription() {
+    if (artStyleSelect.value === "other") {
+      return document.getElementById("customStyle").value.trim() || "children's picture book illustration style";
+    }
+    return STYLE_DESCRIPTIONS[artStyleSelect.value];
+  }
 
   function getWordSource() {
     // 入門版用 ML，進階版用 BL
@@ -221,7 +259,8 @@
     const storySpreads = document.getElementById("storySpreads").value;
     const sentencesPerPage = SENTENCES_PER_PAGE[level];
 
-    const payload = { mode, level, sentencesPerPage, storySpreads };
+    const artStyle = getStyleDescription();
+    const payload = { mode, level, sentencesPerPage, storySpreads, artStyle };
 
     if (mode === "topic") {
       payload.topic = document.getElementById("topic").value;
@@ -262,7 +301,7 @@
       const data = JSON.parse(text);
       renderStory(data);
       loadingEl.textContent = "文字完成，開始生成插圖（每頁約10-30秒，請耐心等待）...";
-      await generateAllImages(data);
+      await generateAllImages(data, artStyle);
       loadingEl.style.display = "none";
     } catch (err) {
       errorEl.style.display = "block";
@@ -294,18 +333,19 @@
   }
 
   // 依序（一張一張）呼叫 Worker 生成每頁插圖，並即時把圖片插進畫面
-  async function generateAllImages(data) {
+  async function generateAllImages(data, artStyle) {
     const pages = data.pages || [];
     for (const page of pages) {
       const statusEl = document.getElementById(`img-status-${page.page_number}`);
       const slotEl = document.getElementById(`img-slot-${page.page_number}`);
       if (statusEl) statusEl.textContent = `第 ${page.page_number} 頁插圖生成中...`;
 
+      const finalImagePrompt = `${page.image_prompt}, ${artStyle}`;
       try {
         const res = await fetch(WORKER_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "generateImage", prompt: page.image_prompt }),
+          body: JSON.stringify({ action: "generateImage", prompt: finalImagePrompt }),
         });
         const text = await res.text();
 
