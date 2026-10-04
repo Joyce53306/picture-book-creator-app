@@ -33,13 +33,9 @@
   .cover-title-overlay { position: absolute; top: 6%; left: 4%; right: 4%; text-align: center; font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 30px; color: #1a1a1a; text-shadow: 0 2px 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85); }
   .cover-byline-overlay { position: absolute; bottom: 4%; right: 5%; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 15px; color: #1a1a1a; text-shadow: 0 1px 4px rgba(255,255,255,0.85); }
 
-  /* 拼貼風：米色紙張邊框 + 彩色字母書名 */
-  body.art-collage .book-page.cover,
-  body.art-collage .book-page.image-page { background: #f3ead6; padding: 3.5%; box-shadow: inset 0 0 0 1px rgba(120,100,60,0.18); }
-  body.art-collage .book-page.cover img.cover-img,
-  body.art-collage .book-page.image-page img { box-shadow: 0 0 0 1px rgba(90,70,40,0.15); }
-  body.art-collage .cover-title-overlay { top: 11%; left: 8%; right: 8%; font-size: 40px; line-height: 1.12; letter-spacing: 2px; text-transform: uppercase; -webkit-text-stroke: 5px #fff6e0; paint-order: stroke fill; text-shadow: 0 3px 6px rgba(60,40,10,0.25); }
-  body.art-collage .cover-byline-overlay { bottom: 7%; right: 8%; font-size: 20px; font-weight: 800; }
+  /* 拼貼風：彩色字母書名（圖片滿版、不加邊框） */
+  body.art-collage .cover-title-overlay { top: 8%; left: 6%; right: 6%; font-size: 40px; line-height: 1.12; letter-spacing: 2px; text-transform: uppercase; -webkit-text-stroke: 5px #fff6e0; paint-order: stroke fill; text-shadow: 0 3px 6px rgba(60,40,10,0.25); }
+  body.art-collage .cover-byline-overlay { bottom: 4%; right: 5%; font-size: 20px; font-weight: 800; }
   .title-word { display: inline-block; white-space: nowrap; }
   .title-letter { display: inline; }
 
@@ -59,7 +55,9 @@
   body.theme-phonics {
     --deco-bg: #dbe9f7; --deco-border: #1e4d7b; --deco-heading: #173d61; --deco-text: #15314f;
   }
-  .deco-page { background: var(--deco-bg); border: 14px double var(--deco-border); padding: 40px 24px; min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .deco-page { background: var(--deco-bg); border: none; padding: 54px 38px; min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  /* 只有 Sight Words 才有木框，其他類型不加邊 */
+  body.theme-sightwords .deco-page { border: 14px double var(--deco-border); padding: 40px 24px; }
   .deco-page .deco-heading { font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 20px; color: var(--deco-heading); margin-bottom: 14px; }
   .deco-page .story-text { font-family: 'Andika', sans-serif; font-size: var(--story-font-size, 26px); line-height: 1.7; color: var(--deco-text); }
   .deco-page .class-line { font-size: 12px; color: var(--deco-text); opacity: 0.7; margin-top: 16px; }
@@ -249,7 +247,7 @@
   const customStyleField = document.getElementById("field-customStyle");
 
   const STYLE_DESCRIPTIONS = {
-    collage: "hand-painted tissue paper collage illustration, layered torn and cut paper pieces with visible paper fibers and brush-stroke textures, bold simple shapes with no outlines, flat colorful patchwork of overlapping paper scraps, vibrant saturated colors, glowing sunlit sky made of translucent paper strips, rolling hills and ground built from many small paper fragments, soft watercolor-painted paper backgrounds, handmade children's picture book art, warm cream paper border",
+    collage: "hand-painted tissue paper collage illustration, layered torn and cut paper pieces with visible paper fibers and brush-stroke textures, bold simple shapes with no outlines, flat colorful patchwork of overlapping paper scraps, vibrant saturated colors, glowing sunlit sky made of translucent paper strips, rolling hills and ground built from many small paper fragments, soft watercolor-painted paper backgrounds, handmade children's picture book art, full-bleed artwork filling the entire canvas edge to edge, no border, no frame, no margin, no white or cream edge",
     clay: "claymation style, 3D clay figures, soft studio lighting, children's picture book illustration",
     watercolor: "soft watercolor illustration, gentle color bleeding, children's picture book illustration",
   };
